@@ -136,9 +136,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       
       setUser(null);
-      // Clear any stored auth data
-      localStorage.removeItem('supabase.auth.token');
-      sessionStorage.removeItem('supabase.auth.token');
+      // Clear session storage
+      sessionStorage.clear();
       navigate('/', { replace: true });
       showNotification('Successfully signed out', 'success');
     } catch (error) {

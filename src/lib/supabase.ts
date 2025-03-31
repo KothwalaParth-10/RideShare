@@ -12,43 +12,24 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storage: {
       getItem: (key) => {
         try {
-          const item = localStorage.getItem(key);
-          return item;
+          return sessionStorage.getItem(key);
         } catch (error) {
-          console.error('Error accessing localStorage:', error);
-          // Fallback to sessionStorage if localStorage fails
-          try {
-            return sessionStorage.getItem(key);
-          } catch (error) {
-            console.error('Error accessing sessionStorage:', error);
-            return null;
-          }
+          console.error('Error accessing sessionStorage:', error);
+          return null;
         }
       },
       setItem: (key, value) => {
         try {
-          localStorage.setItem(key, value);
+          sessionStorage.setItem(key, value);
         } catch (error) {
-          console.error('Error setting localStorage:', error);
-          // Fallback to sessionStorage if localStorage fails
-          try {
-            sessionStorage.setItem(key, value);
-          } catch (error) {
-            console.error('Error setting sessionStorage:', error);
-          }
+          console.error('Error setting sessionStorage:', error);
         }
       },
       removeItem: (key) => {
         try {
-          localStorage.removeItem(key);
+          sessionStorage.removeItem(key);
         } catch (error) {
-          console.error('Error removing from localStorage:', error);
-          // Try to remove from sessionStorage as well
-          try {
-            sessionStorage.removeItem(key);
-          } catch (error) {
-            console.error('Error removing from sessionStorage:', error);
-          }
+          console.error('Error removing from sessionStorage:', error);
         }
       }
     },
