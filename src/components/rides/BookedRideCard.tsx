@@ -88,7 +88,7 @@ export const BookedRideCard: React.FC<BookedRideCardProps> = ({ booking, onCance
                   className="w-full flex items-center justify-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition"
                 >
                   <MessageSquare className="h-4 w-4" />
-                  <span>Chat with Driver</span>
+                  <span>{showChat ? 'Close Chat' : 'Chat with Driver'}</span>
                 </button>
                 <button
                   onClick={onCancel}
@@ -98,6 +98,11 @@ export const BookedRideCard: React.FC<BookedRideCardProps> = ({ booking, onCance
                   {loading ? 'Cancelling...' : 'Cancel Ride'}
                 </button>
               </>
+            )}
+            {booking.status === 'cancelled' && (
+              <div className="w-full text-center py-2 bg-gray-100 text-gray-600 rounded-md">
+                Cancelled
+              </div>
             )}
           </div>
         </div>

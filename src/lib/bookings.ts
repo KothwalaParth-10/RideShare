@@ -262,14 +262,104 @@ export const updateBookingStatus = async (
   bookingId: string,
   status: BookingStatus
 ) => {
-  const updateData: BookingUpdate = { status };
-  
-  const { data, error } = await supabase
-    .from('bookings')
-    .update(updateData)
-    .eq('id', bookingId)
-    .select()
-    .single();
+  try {
+    // First get the booking details with all necessary relations
+    const { data: booking, error: fetchError } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        rides (
+          id,
+          available_seats,
+          status
+        )
+      `)
+      .eq('id', bookingId)
+      .single();
 
-  return { booking: data, error };
+    if (fetchError) {
+      console.error('Error fetching booking:', fetchError);
+      throw new Error('Could not find the booking');
+    }
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
+    if (!booking.rides) {
+      throw new Error('Associated ride not found');
+    }
+
+    // If canceling, first update the ride's available seats
+    if (status === 'cancelled') {
+      const newAvailableSeats = (booking.rides.available_seats || 0) + booking.seats_booked;
+      
+      // Update ride seats without requesting a return value
+      const { error: rideError } = await supabase
+        .from('rides')
+        .update({ 
+          available_seats: newAvailableSeats,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', booking.ride_id);
+
+      if (rideError) {
+        console.error('Error updating ride seats:', rideError);
+        throw new Error('Failed to update ride seat availability');
+      }
+    }
+
+    // Then update the booking status
+    const { data: updatedBooking, error: updateError } = await supabase
+      .from('bookings')
+      .update({ 
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', bookingId)
+      .select()
+      .single();
+
+    if (updateError) {
+      console.error('Error updating booking:', updateError);
+      throw new Error('Failed to update booking status');
+    }
+
+    if (!updatedBooking) {
+      throw new Error('Failed to update booking');
+    }
+
+    // Fetch the updated booking with all relations
+    const { data: finalBooking, error: finalError } = await supabase
+      .from('bookings')
+      .select(`
+        *,
+        rides (
+          id,
+          available_seats,
+          status,
+          profiles (
+            name,
+            avatar_url
+          )
+        ),
+        profiles (
+          name,
+          avatar_url
+        )
+      `)
+      .eq('id', bookingId)
+      .single();
+
+    if (finalError) {
+      console.error('Error fetching updated booking:', finalError);
+      throw new Error('Failed to fetch updated booking details');
+    }
+
+    return { booking: finalBooking, error: null };
+  } catch (err) {
+    console.error('Error in updateBookingStatus:', err);
+    return { 
+      booking: null, 
+      error: err instanceof Error ? err : new Error('Failed to update booking status')
+    };
+  }
 };

@@ -36,6 +36,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
 
   const scrollToBottom = () => {
     if (messagesEndRef.current) {
@@ -67,8 +69,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     fetchMessages();
 
     // Set up real-time subscription for new messages
-    const subscription = supabase
+    const channel = supabase
       .channel(`chat-${bookingId}`)
+      .on('presence', { event: 'sync' }, () => {
+        setIsConnected(true);
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+        console.log('User joined:', newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+        console.log('User left:', leftPresences);
+      })
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -85,12 +96,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           await markMessagesAsRead(bookingId, recipientId);
         }
       })
-      .subscribe();
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ user_id: user?.id });
+        }
+      });
+
+    // Set up reconnection logic
+    const handleDisconnect = () => {
+      setIsConnected(false);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        channel.subscribe();
+      }, 5000);
+    };
+
+    window.addEventListener('offline', handleDisconnect);
+    window.addEventListener('online', () => {
+      setIsConnected(true);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+    });
 
     return () => {
-      subscription.unsubscribe();
+      window.removeEventListener('offline', handleDisconnect);
+      window.removeEventListener('online', () => {});
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      channel.unsubscribe();
     };
-  }, [bookingId, recipientId]);
+  }, [bookingId, recipientId, user?.id]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,9 +194,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           />
           <div>
             <h3 className="text-lg font-semibold text-gray-900">{recipientName}</h3>
-            {isTyping && (
-              <span className="text-sm text-blue-600 animate-pulse">typing...</span>
-            )}
+            <div className="flex items-center space-x-2">
+              {isTyping && (
+                <span className="text-sm text-blue-600 animate-pulse">typing...</span>
+              )}
+              {!isConnected && (
+                <span className="text-sm text-red-600">Reconnecting...</span>
+              )}
+            </div>
           </div>
         </div>
         {onClose && (
@@ -171,7 +215,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Messages Container */}
-      <div 
+      <div
         ref={chatContainerRef}
         className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50"
       >
@@ -243,24 +287,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               setNewMessage(e.target.value);
               handleTyping();
             }}
-            placeholder="Type your message..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Type a message..."
+            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            disabled={sending || !isConnected}
           />
           <button
             type="submit"
-            disabled={sending || !newMessage.trim()}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            disabled={!newMessage.trim() || sending || !isConnected}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sending ? (
-              <>
-                <Loader className="h-5 w-5 animate-spin" />
-                <span>Sending</span>
-              </>
+              <Loader className="h-5 w-5 animate-spin" />
             ) : (
-              <>
-                <Send className="h-5 w-5" />
-                <span>Send</span>
-              </>
+              <Send className="h-5 w-5" />
             )}
           </button>
         </div>

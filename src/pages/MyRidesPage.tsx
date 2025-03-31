@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, MapPin, Users, Clock, Loader, Car as CarIcon, MessageSquare, AlertTriangle } from 'lucide-react';
+import { Calendar, MapPin, Users, Clock, Loader, Car as CarIcon, MessageSquare, AlertTriangle, Check } from 'lucide-react';
 import { useRides } from '../hooks/useRides';
 import { useCancelBooking } from '../hooks/useCancelBooking';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,7 +13,7 @@ import { getPendingRequests, handleRequest } from '../lib/requests';
 const MyRidesPage = () => {
   const { user } = useAuth();
   const { rides, loading, error, refreshRides } = useRides();
-  const { cancelBooking, loading: cancellingBooking } = useCancelBooking();
+  const { cancelBooking, isLoading } = useCancelBooking();
   const [activeTab, setActiveTab] = useState('offered');
   const [activeChat, setActiveChat] = useState<{
     bookingId: string;
@@ -53,8 +53,17 @@ const MyRidesPage = () => {
   }
 
   const handleCancelBooking = async (bookingId: string) => {
-    await cancelBooking(bookingId);
-    refreshRides();
+    if (!bookingId) return;
+    
+    try {
+      const result = await cancelBooking(bookingId);
+      if (result?.success) {
+        // Force an immediate refresh of the rides list
+        await refreshRides();
+      }
+    } catch (err) {
+      console.error('Error in handleCancelBooking:', err);
+    }
   };
 
   const handleUpdateRideStatus = async (rideId: string, status: 'completed' | 'cancelled') => {
@@ -115,11 +124,10 @@ const MyRidesPage = () => {
       case 'offered':
         return rides.offered?.map((ride) => {
           const expired = isRideExpired(ride.departure_date, ride.departure_time);
-          const rideBookings = rides.booked?.filter(booking => booking.ride_id === ride.id) || [];
+          const rideBookings = rides.booked?.filter(b => b.ride_id === ride.id) || [];
           
           return (
-            <div key={ride.id} className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-6">
-              {/* Existing offered rides content */}
+            <div key={ride.id} className="bg-white rounded-lg shadow-md p-6">
               <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-6">
                 <div className="space-y-4">
                   <div className="flex items-center space-x-4">
@@ -224,24 +232,35 @@ const MyRidesPage = () => {
                             <p className="text-sm text-gray-600">{booking.seats_booked} seats booked</p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => setActiveChat({
-                            bookingId: booking.id,
-                            recipientId: booking.passenger_id,
-                            recipientName: booking.profiles?.name || 'Passenger'
-                          })}
-                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
-                        >
-                          <MessageSquare className="h-5 w-5" />
-                          <span>Chat</span>
-                        </button>
+                        <div className="flex items-center space-x-4">
+                          <button
+                            onClick={() => setActiveChat({
+                              bookingId: booking.id,
+                              recipientId: booking.passenger_id,
+                              recipientName: booking.profiles?.name || 'Passenger'
+                            })}
+                            className="flex items-center space-x-2 text-blue-600 hover:text-blue-700"
+                          >
+                            <MessageSquare className="h-5 w-5" />
+                            <span>Chat</span>
+                          </button>
+                          {!expired && booking.status === 'confirmed' && (
+                            <button
+                              onClick={() => handleUpdateRideStatus(ride.id, 'completed')}
+                              className="flex items-center space-x-2 text-green-600 hover:text-green-700"
+                            >
+                              <Check className="h-5 w-5" />
+                              <span>Mark as Completed</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {activeChat && (
+              {activeChat && activeChat.bookingId && (
                 <div className="mt-6">
                   <ChatWindow
                     bookingId={activeChat.bookingId}
@@ -261,9 +280,9 @@ const MyRidesPage = () => {
             key={booking.id}
             booking={booking}
             onCancel={() => handleCancelBooking(booking.id)}
-            loading={cancellingBooking}
+            loading={isLoading(booking.id)}
           />
-        ));
+        )) || null;
 
       case 'requests':
         if (loadingRequests) {
