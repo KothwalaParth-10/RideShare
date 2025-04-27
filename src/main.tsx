@@ -6,6 +6,10 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import reportWebVitals from './lib/performance';
 import './index.css';
 
+// Import Leaflet CSS
+import 'leaflet/dist/leaflet.css';
+import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
+
 const root = document.getElementById('root');
 
 if (root) {

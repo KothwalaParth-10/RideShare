@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-routing-machine';
 import { Navigation } from 'lucide-react';
 import { startLocationTracking } from '../../lib/location';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-routing-machine/dist/leaflet-routing-machine.css';
 
 interface LiveLocationMapProps {
   center?: [number, number];
@@ -16,17 +18,29 @@ interface LiveLocationMapProps {
 // Custom hook for tracking user's location
 const useCurrentLocation = (onLocationUpdate?: (lat: number, lng: number) => void) => {
   const [location, setLocation] = useState<[number, number] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const stopTracking = startLocationTracking((loc) => {
-      const newLocation: [number, number] = [loc.latitude, loc.longitude];
-      setLocation(newLocation);
-      onLocationUpdate?.(loc.latitude, loc.longitude);
-    });
+    try {
+      const stopTracking = startLocationTracking(
+        (loc) => {
+          const newLocation: [number, number] = [loc.latitude, loc.longitude];
+          setLocation(newLocation);
+          onLocationUpdate?.(loc.latitude, loc.longitude);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 30000,
+          timeout: 30000
+        }
+      );
 
-    return () => {
-      stopTracking();
-    };
+      return () => {
+        stopTracking();
+      };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get location');
+    }
   }, [onLocationUpdate]);
 
   return location;
@@ -55,10 +69,10 @@ const fromIcon = createIcon('green');
 const toIcon = createIcon('red');
 
 // Gujarat bounds
-const GUJARAT_BOUNDS = {
-  northEast: [24.7, 74.8],
-  southWest: [20.1, 68.1]
-};
+const GUJARAT_BOUNDS: L.LatLngBoundsExpression = [
+  [20.1, 68.1], // Southwest coordinates
+  [24.7, 74.8]  // Northeast coordinates
+];
 
 // Component to handle routing
 const RoutingMachine: React.FC<{
@@ -68,27 +82,46 @@ const RoutingMachine: React.FC<{
   const map = useMap();
 
   useEffect(() => {
-    if (!from || !to || !L.Routing) return;
+    if (!from || !to) return;
 
-    // Create routing control
-    const routingControl = L.Routing.control({
-      waypoints: [
-        L.latLng(from.lat, from.lng),
-        L.latLng(to.lat, to.lng)
-      ],
-      routeWhileDragging: false,
-      addWaypoints: false,
-      draggableWaypoints: false,
-      fitSelectedRoutes: true,
-      showAlternatives: false,
-      lineOptions: {
-        styles: [{ color: '#4F46E5', weight: 6 }]
-      }
-    }).addTo(map);
+    try {
+      console.log('Creating route between:', from, to);
+      
+      // Create routing control with basic options
+      const routingControl = L.Routing.control({
+        waypoints: [
+          L.latLng(from.lat, from.lng),
+          L.latLng(to.lat, to.lng)
+        ],
+        routeWhileDragging: false,
+        addWaypoints: false,
+        fitSelectedRoutes: true,
+        showAlternatives: false,
+        lineOptions: {
+          styles: [{ color: '#4F46E5', weight: 6 }],
+          extendToWaypoints: true,
+          missingRouteTolerance: 0
+        }
+      }).addTo(map);
 
-    return () => {
-      map.removeControl(routingControl);
-    };
+      // Handle routing errors
+      routingControl.on('routingerror', (error: any) => {
+        console.error('Routing error:', error);
+      });
+
+      // Fit bounds to show the entire route with padding
+      const bounds = L.latLngBounds([
+        [from.lat, from.lng],
+        [to.lat, to.lng]
+      ]);
+      map.fitBounds(bounds, { padding: [50, 50] });
+
+      return () => {
+        map.removeControl(routingControl);
+      };
+    } catch (error) {
+      console.error('Error creating routing control:', error);
+    }
   }, [map, from, to]);
 
   return null;
@@ -104,13 +137,23 @@ export const LiveLocationMap: React.FC<LiveLocationMapProps> = ({
   const currentLocation = useCurrentLocation(onLocationUpdate);
   const mapCenter = currentLocation || center;
 
+  // Log when locations change
+  useEffect(() => {
+    if (fromLocation) {
+      console.log('From location updated:', fromLocation);
+    }
+    if (toLocation) {
+      console.log('To location updated:', toLocation);
+    }
+  }, [fromLocation, toLocation]);
+
   return (
     <MapContainer
       center={mapCenter}
       zoom={zoom}
       className="h-full w-full"
       style={{ minHeight: '400px' }}
-      maxBounds={[GUJARAT_BOUNDS.southWest, GUJARAT_BOUNDS.northEast]}
+      maxBounds={GUJARAT_BOUNDS}
       minZoom={7}
     >
       <TileLayer
@@ -130,7 +173,11 @@ export const LiveLocationMap: React.FC<LiveLocationMapProps> = ({
       )}
 
       {fromLocation && (
-        <Marker position={[fromLocation.lat, fromLocation.lng]} icon={fromIcon}>
+        <Marker 
+          position={[fromLocation.lat, fromLocation.lng]} 
+          icon={fromIcon}
+          key={`from-${fromLocation.lat}-${fromLocation.lng}`}
+        >
           <Popup>
             <div className="font-semibold">From: {fromLocation.name}</div>
           </Popup>
@@ -138,7 +185,11 @@ export const LiveLocationMap: React.FC<LiveLocationMapProps> = ({
       )}
 
       {toLocation && (
-        <Marker position={[toLocation.lat, toLocation.lng]} icon={toIcon}>
+        <Marker 
+          position={[toLocation.lat, toLocation.lng]} 
+          icon={toIcon}
+          key={`to-${toLocation.lat}-${toLocation.lng}`}
+        >
           <Popup>
             <div className="font-semibold">To: {toLocation.name}</div>
           </Popup>

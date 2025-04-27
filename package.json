@@ -11,6 +11,7 @@
     "analyze": "vite build --mode analyze"
   },
   "dependencies": {
+    "@mapbox/polyline": "^1.2.1",
     "@supabase/gotrue-js": "^2.69.1",
     "@supabase/supabase-js": "^2.39.7",
     "leaflet": "^1.9.4",
@@ -28,6 +29,7 @@
     "@eslint/js": "^9.9.1",
     "@types/leaflet": "^1.9.8",
     "@types/leaflet-routing-machine": "^3.2.8",
+    "@types/mapbox__polyline": "^1.0.5",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@types/react-virtualized": "^9.21.29",
